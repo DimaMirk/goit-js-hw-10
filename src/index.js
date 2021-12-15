@@ -1,59 +1,93 @@
-import './css/styles.css';
-import fetchCountries from './js/fetchCountries.js';
-import coutriesList from './template/marcap-list.hbs';
-import coutriesCard from './template/marcap-card.hbs';
+import './sass/styles.scss';
+import FetchPictures from './js/fetchPicture';
+// import createCard from './js/marcup';
 import { Notify } from 'notiflix/build/notiflix-notify-aio';
 
-const debounce = require('lodash.debounce');
-const DEBOUNCE_DELAY = 300;
+import SimpleLightbox from 'simplelightbox';
+import 'simplelightbox/dist/simple-lightbox.min.css';
+
+const lightbox = new SimpleLightbox('.gallery a', {
+  captionDelay: 250,
+});
 
 const refs = {
-  searchBox: document.querySelector('#search-box'),
-  countryList: document.querySelector('.country-list'),
-  countryCard: document.querySelector('.country-info'),
+  form: document.querySelector('.search-form'),
+  gallery: document.querySelector('.gallery'),
+  loadMoreBtn: document.querySelector('.showBtn'),
 };
 
-refs.searchBox.addEventListener('input', debounce(onInput, DEBOUNCE_DELAY));
+const fetchApiPictures = new FetchPictures();
 
-function onInput(e) {
-  const inputValue = refs.searchBox.value.trim();
+refs.form.addEventListener('submit', onSearch);
+refs.loadMoreBtn.addEventListener('click', onLoadMore);
 
-  refs.countryList.innerHTML = '';
-  refs.countryCard.innerHTML = '';
+// let searchQuery = '';
 
-  if (inputValue.length < 2) {
-    Notify.info('Too many matches found. Please enter a more specific name.');
-    return;
+function onSearch(e) {
+  e.preventDefault();
+  fetchApiPictures.query = e.currentTarget.elements.searchQuery.value;
+
+  if (fetchApiPictures.query === '') {
+    return showError();
   }
 
-  fetchCountries(inputValue)
-    .then(country => {
-      checkDataLength(country);
-    })
-    .catch(showError);
+  fetchApiPictures.fetchPictures().then(({ hits, totalHits }) => {
+    clearCardsConteiner();
+    if (totalHits === 0) {
+      return showError();
+    }
+    appendCardsMarcup(hits);
+    showFirstQuerytotalHits(totalHits);
+    refs.loadMoreBtn.style.display = 'flex';
+  });
+  fetchApiPictures.resetPage();
 }
 
-function checkDataLength(countryArr) {
-  if (countryArr.length > 1) {
-    buildCountryList(countryArr);
-    return;
-  }
-  buildCountryCard(countryArr);
+function onLoadMore() {
+  fetchApiPictures.fetchPictures().then(({ hits }) => {
+    appendCardsMarcup(hits);
+  });
 }
 
-function buildCountryList(data) {
-  const list = data.reduce((acc, country) => {
-    return acc + coutriesList(country);
-  }, '');
-  refs.countryList.insertAdjacentHTML('beforeend', list);
+function appendCardsMarcup(cards) {
+  refs.gallery.insertAdjacentHTML('beforeend', createCard(cards));
+  const lightbox = new SimpleLightbox('.gallery a', {
+    captionDelay: 250,
+  });
 }
 
-function buildCountryCard([data]) {
-  const cardMarcup = coutriesCard(data);
-
-  refs.countryCard.insertAdjacentHTML('beforeend', cardMarcup);
+function showError() {
+  Notify.failure('Sorry, there are no images matching your search query. Please try again.');
+  refs.loadMoreBtn.style.display = 'none';
 }
 
-function showError(error) {
-  Notify.failure('Oops, there is no country with that name');
+function createCard(res) {
+  return res
+    .map(
+      elem => `<a class="photo-card" href=${elem.largeImageURL}>
+              <img src="${elem.webformatURL}" alt="${elem.tags}" loading="lazy" />
+               <div class="info">
+                 <p class="info-item">
+                    <b>Likes </b>${elem.likes}
+                 </p>
+                 <p class="info-item">
+                     <b>Views </b>${elem.views}
+                 </p>
+                 <p class="info-item">
+                      <b>Comments </b>${elem.comments}
+                 </p>
+                 <p class="info-item">
+                       <b>Downloads </b> ${elem.downloads}
+                 </p>
+               </div>
+         </a>`,
+    )
+    .join('');
+}
+
+function clearCardsConteiner() {
+  refs.gallery.innerHTML = '';
+}
+function showFirstQuerytotalHits(totalHits) {
+  Notify.success(`Hooray! We found ${totalHits} images.`);
 }
